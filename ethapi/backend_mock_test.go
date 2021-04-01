@@ -284,6 +284,11 @@ func (mr *MockBackendMockRecorder) GetTd(hash interface{}) *gomock.Call {
 
 // GetEVM mocks base method
 func (m *MockBackend) GetEVM(ctx context.Context, msg evmcore.Message, state *state.StateDB, header *evmcore.EvmHeader) (*vm.EVM, func() error, error) {
+	return m.GetEVMWithCfg(ctx, msg, state, header, vm.Config{})
+}
+
+// GetEVM mocks base method
+func (m *MockBackend) GetEVMWithCfg(ctx context.Context, msg evmcore.Message, state *state.StateDB, header *evmcore.EvmHeader, cfg vm.Config) (*vm.EVM, func() error, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEVM", ctx, msg, state, header)
 	ret0, _ := ret[0].(*vm.EVM)
