@@ -173,7 +173,7 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 		}, {
 			Namespace: "trace",
 			Version:   "1.0",
-			Service:   NewPublicBlockChainAPI(apiBackend),
+			Service:   NewPublicTxTraceAPI(apiBackend),
 			Public:    true,
 		},
 	}

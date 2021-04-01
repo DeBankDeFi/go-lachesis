@@ -36,6 +36,17 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+// PublicTxTraceAPI provides an API to access transaction tracing.
+// It offers only methods that operate on public data that is freely available to anyone.
+type PublicTxTraceAPI struct {
+	b Backend
+}
+
+// NewPublicTxTraceAPI creates a new transaction trace API.
+func NewPublicTxTraceAPI(b Backend) *PublicTxTraceAPI {
+	return &PublicTxTraceAPI{b}
+}
+
 // CallTrace is struct for holding tracing results
 type CallTrace struct {
 	Actions []ActionTrace  `json:"result"`
@@ -581,7 +592,7 @@ func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, t
 * When fullTx is true all transactions in the block are returned, otherwise
 * only the transaction hash is returned.
  */
-func (s *PublicBlockChainAPI) Block(ctx context.Context, numberOrHash rpc.BlockNumberOrHash) (*[]ActionTrace, error) {
+func (s *PublicTxTraceAPI) Block(ctx context.Context, numberOrHash rpc.BlockNumberOrHash) (*[]ActionTrace, error) {
 
 	blockNr, _ := numberOrHash.Number()
 	block, err := s.b.BlockByNumber(ctx, blockNr)
@@ -595,7 +606,7 @@ func (s *PublicBlockChainAPI) Block(ctx context.Context, numberOrHash rpc.BlockN
 }
 
 // Transaction trace_transaction function returns transaction traces
-func (s *PublicBlockChainAPI) Transaction(ctx context.Context, hash common.Hash) (*[]ActionTrace, error) {
+func (s *PublicTxTraceAPI) Transaction(ctx context.Context, hash common.Hash) (*[]ActionTrace, error) {
 
 	_, blockNumber, _, _ := s.b.GetTransaction(ctx, hash)
 	blkNr := rpc.BlockNumber(blockNumber)
@@ -620,7 +631,7 @@ type FilterArgs struct {
 }
 
 // Filter is function for trace_filter rpc call
-func (s *PublicBlockChainAPI) Filter(ctx context.Context, args FilterArgs) (*[]ActionTrace, error) {
+func (s *PublicTxTraceAPI) Filter(ctx context.Context, args FilterArgs) (*[]ActionTrace, error) {
 	defer func(start time.Time) { log.Debug("Executing trace_filter call finished", "runtime", time.Since(start)) }(time.Now())
 
 	// TODO put timeout to server configuration
