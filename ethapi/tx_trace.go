@@ -554,7 +554,6 @@ func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, t
 				log.Debug("Cannot get transaction %s: %s", tx.Hash().String(), err.Error())
 				mainErr = err
 				break
-				//return nil, err
 			}
 			txTraces, err := traceTx(ctx, state, header, backend, block, tx, index)
 			if err != nil {
@@ -583,7 +582,7 @@ func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, t
 		return &emptyTrace.Actions, nil
 	}
 
-	return &callTrace.Actions, mainErr
+	return &callTrace.Actions, nil
 }
 
 /* trace_block function returns transaction traces in givven block
@@ -645,6 +644,7 @@ func (s *PublicTxTraceAPI) Filter(ctx context.Context, args FilterArgs) (*[]Acti
 	// process arguments
 	var (
 		fromBlock, toBlock rpc.BlockNumber
+		mainErr            error
 	)
 	if args.FromBlock != nil {
 		fromBlock = *args.FromBlock.BlockNumber
@@ -691,14 +691,16 @@ blocks:
 	for i := fromBlock; i < toBlock; i++ {
 		block, err := s.b.BlockByNumber(ctx, i)
 		if err != nil {
-			return nil, err
+			mainErr = err
+			break
 		}
 
 		// when block has any transaction, then process it
 		if block != nil && block.Transactions.Len() > 0 {
 			traces, err := traceBlock(ctx, block, s.b, nil)
 			if err != nil {
-				return nil, err
+				mainErr = err
+				break
 			}
 
 			// loop thru all traces from the block
@@ -741,7 +743,7 @@ blocks:
 	}
 
 	//when timeout occured or nothing in result
-	if contextDone || len(callTrace.Actions) == 0 {
+	if contextDone || len(callTrace.Actions) == 0 || mainErr != nil {
 		// in case of empty block, create an empty action result
 
 		emptyTrace := CallTrace{
@@ -752,6 +754,8 @@ blocks:
 		blockTrace.Action = *txAction
 		if contextDone {
 			blockTrace.Error = "Timeout for trace_filter occured, please try to set smaller block interval"
+		} else if mainErr != nil {
+			blockTrace.Error = mainErr.Error()
 		} else {
 			blockTrace.Error = "Empty block"
 		}
