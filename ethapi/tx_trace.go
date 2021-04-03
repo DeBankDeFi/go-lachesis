@@ -148,7 +148,7 @@ type AddressAction struct {
 	Input         hexutil.Bytes   `json:"input,omitempty"`
 	Address       *common.Address `json:"address,omitempty"`
 	RefundAddress *common.Address `json:"refund_address,omitempty"`
-	Balance       hexutil.Big     `json:"balance,omitempty"`
+	Balance       *hexutil.Big    `json:"balance,omitempty"`
 }
 
 // TraceActionResult holds information related to result of the
@@ -327,7 +327,8 @@ func processStructLog(ctx context.Context, backend Backend, structLogger *TraceS
 			parentBlockNr := rpc.BlockNumber(trace.BlockNumber.Int64() - 1)
 			chainState, _, err := backend.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &parentBlockNr})
 			if chainState != nil || err == nil {
-				traceAction.Balance = hexutil.Big(*chainState.GetBalance(*action.To))
+				bal := hexutil.Big(*chainState.GetBalance(*action.To))
+				traceAction.Balance = &bal
 			}
 
 			trace.Action = *traceAction
@@ -337,7 +338,6 @@ func processStructLog(ctx context.Context, backend Backend, structLogger *TraceS
 			state = append(state, depthState{logg.Depth, false})
 		}
 	}
-
 	callTrace.processLastTrace()
 }
 
@@ -412,7 +412,7 @@ func getStructLogForTransaction(
 	// Setup context so it may be cancelled the call has completed
 	// or, in case of unmetered gas, setup a context with a timeout.
 	// TODO add time into the server configuration
-	var timeout time.Duration = 500 * time.Millisecond
+	var timeout time.Duration = 4 * time.Second
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithTimeout(ctx, timeout)
 
@@ -452,8 +452,8 @@ func getStructLogForTransaction(
 	}
 	// If the timer caused an abort, return an appropriate error message
 	if evm.Cancelled() {
-		log.Info("EVM was canceled due to timeout when replaying transaction", tx.Hash().String())
-		//return nil, nil, nil, fmt.Errorf("Transaction replay execution aborted (timeout = %v)", timeout)
+		log.Info("EVM was canceled due to timeout when replaying transaction ", tx.Hash().String())
+		return nil, nil, nil, fmt.Errorf("Transaction replay execution aborted (timeout = %v)", timeout)
 	}
 	return &traceStructLog, &msg, result, nil
 }
@@ -593,6 +593,7 @@ func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, t
 * only the transaction hash is returned.
  */
 func (s *PublicTxTraceAPI) Block(ctx context.Context, numberOrHash rpc.BlockNumberOrHash) (*[]ActionTrace, error) {
+	defer func(start time.Time) { log.Info("Executing trace_block call finished", "runtime", time.Since(start)) }(time.Now())
 
 	blockNr, _ := numberOrHash.Number()
 	block, err := s.b.BlockByNumber(ctx, blockNr)
@@ -607,7 +608,9 @@ func (s *PublicTxTraceAPI) Block(ctx context.Context, numberOrHash rpc.BlockNumb
 
 // Transaction trace_transaction function returns transaction traces
 func (s *PublicTxTraceAPI) Transaction(ctx context.Context, hash common.Hash) (*[]ActionTrace, error) {
-
+	defer func(start time.Time) {
+		log.Info("Executing trace_transaction call finished", "runtime", time.Since(start))
+	}(time.Now())
 	_, blockNumber, _, _ := s.b.GetTransaction(ctx, hash)
 	blkNr := rpc.BlockNumber(blockNumber)
 	block, err := s.b.BlockByNumber(ctx, blkNr)
@@ -632,11 +635,11 @@ type FilterArgs struct {
 
 // Filter is function for trace_filter rpc call
 func (s *PublicTxTraceAPI) Filter(ctx context.Context, args FilterArgs) (*[]ActionTrace, error) {
-	defer func(start time.Time) { log.Debug("Executing trace_filter call finished", "runtime", time.Since(start)) }(time.Now())
+	defer func(start time.Time) { log.Info("Executing trace_filter call finished", "runtime", time.Since(start)) }(time.Now())
 
 	// TODO put timeout to server configuration
 	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	// process arguments
@@ -735,6 +738,26 @@ blocks:
 		if contextDone {
 			break
 		}
+	}
+
+	//when timeout occured or nothing in result
+	if contextDone || len(callTrace.Actions) == 0 {
+		// in case of empty block, create an empty action result
+
+		emptyTrace := CallTrace{
+			Actions: make([]ActionTrace, 0),
+		}
+		blockTrace := NewActionTrace(common.Hash{}, *new(big.Int), common.Hash{}, 0, "empty")
+		txAction := NewAddressAction(&common.Address{}, 0, []byte{}, nil, hexutil.Big{}, nil)
+		blockTrace.Action = *txAction
+		if contextDone {
+			blockTrace.Error = "Timeout for trace_filter occured, please try to set smaller block interval"
+		} else {
+			blockTrace.Error = "Empty block"
+		}
+		emptyTrace.addTrace(blockTrace)
+		return &emptyTrace.Actions, nil
+
 	}
 	return &callTrace.Actions, nil
 }
