@@ -387,12 +387,9 @@ func getStructLogForTransaction(
 	tx *types.Transaction,
 	backend Backend,
 	state *state.StateDB,
-	header *evmcore.EvmHeader) (*TraceStructLogger, *types.Message, *evmcore.ExecutionResult, error) {
-
-	var signer types.Signer = types.FrontierSigner{}
-	if tx.Protected() {
-		signer = types.NewEIP155Signer(tx.ChainId())
-	}
+	header *evmcore.EvmHeader,
+	block *evmcore.EvmBlock,
+	index uint64) (*TraceStructLogger, *types.Message, *evmcore.ExecutionResult, error) {
 
 	// Config set for debug and to collect all information from EVM
 	cfg := vm.Config{}
@@ -420,16 +417,25 @@ func getStructLogForTransaction(
 	// this makes sure resources are cleaned up.
 	defer cancel()
 
+	// create a signer of this transaction
+	signer := types.MakeSigner(backend.ChainConfig(), block.Number)
+	var from common.Address
+
 	// reconstruct message from transaction
-	from, _ := types.Sender(signer, tx)
 	msg, err := tx.AsMessage(signer)
 	if err != nil {
-		log.Error("Can't recreate message for transaction:", tx.Hash().String(), " err: ", err.Error())
-		return nil, nil, nil, err
+		log.Debug("Can't recreate message for transaction:", tx.Hash().String(), " err: ", err.Error())
+		if v, _, _ := tx.RawSignatureValues(); new(big.Int).Cmp(v) != 0 {
+			return nil, nil, nil, err
+		} else {
+			from = common.Address{}
+		}
+	} else {
+		from = msg.From()
 	}
 
-	// Change some variables for replay and get a new instance of the EVM.
-	replayMsg := types.NewMessage(from, msg.To(), 0, new(big.Int), tx.Gas(), tx.GasPrice(), msg.Data(), false)
+	// Changing some variables for replay and get a new instance of the EVM.
+	replayMsg := types.NewMessage(from, msg.To(), 0, msg.Value(), tx.Gas(), tx.GasPrice(), msg.Data(), false)
 	evm, vmError, err := backend.GetEVMWithCfg(nil, replayMsg, state, header, cfg)
 	if err != nil {
 		log.Error("Can't get evm for processing transaction:", tx.Hash().String(), " err: ", err.Error())
@@ -445,6 +451,7 @@ func getStructLogForTransaction(
 	// Setup the gas pool (also for unmetered requests)
 	// and apply the message.
 	gp := new(evmcore.GasPool).AddGas(math.MaxUint64)
+	state.Prepare(tx.Hash(), block.Hash, int(index))
 	result, err := evmcore.ApplyMessage(evm, replayMsg, gp)
 	if err = vmError(); err != nil {
 		log.Error("Error when replaying transaction:", tx.Hash().String(), " err: ", err.Error())
@@ -465,7 +472,7 @@ func traceTx(ctx context.Context, state *state.StateDB, header *evmcore.EvmHeade
 		Actions: make([]ActionTrace, 0),
 	}
 
-	structLog, msg, result, err := getStructLogForTransaction(ctx, tx, backend, state, header)
+	structLog, msg, result, err := getStructLogForTransaction(ctx, tx, backend, state, header, block, index)
 	if err != nil {
 		log.Debug("Cannot get struct log for transaction %s, %s", tx.Hash().String(), err.Error())
 		return nil, err
