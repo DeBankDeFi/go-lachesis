@@ -424,7 +424,7 @@ func getStructLogForTransaction(
 	// reconstruct message from transaction
 	msg, err := tx.AsMessage(signer)
 	if err != nil {
-		log.Debug("Can't recreate message for transaction:", tx.Hash().String(), " err: ", err.Error())
+		log.Debug("Can't recreate message for transaction:", "txHash", tx.Hash().String(), " err", err.Error())
 		if v, _, _ := tx.RawSignatureValues(); new(big.Int).Cmp(v) != 0 {
 			return nil, nil, nil, err
 		} else {
@@ -438,7 +438,7 @@ func getStructLogForTransaction(
 	replayMsg := types.NewMessage(from, msg.To(), 0, msg.Value(), tx.Gas(), tx.GasPrice(), msg.Data(), false)
 	evm, vmError, err := backend.GetEVMWithCfg(nil, replayMsg, state, header, cfg)
 	if err != nil {
-		log.Error("Can't get evm for processing transaction:", tx.Hash().String(), " err: ", err.Error())
+		log.Error("Can't get evm for processing transaction:", "txHash", tx.Hash().String(), " err", err.Error())
 		return nil, nil, nil, err
 	}
 	// Wait for the context to be done and cancel the evm. Even if the
@@ -454,12 +454,12 @@ func getStructLogForTransaction(
 	state.Prepare(tx.Hash(), block.Hash, int(index))
 	result, err := evmcore.ApplyMessage(evm, replayMsg, gp)
 	if err = vmError(); err != nil {
-		log.Error("Error when replaying transaction:", tx.Hash().String(), " err: ", err.Error())
+		log.Error("Error when replaying transaction:", "txHash", tx.Hash().String(), " err", err.Error())
 		return nil, nil, nil, err
 	}
 	// If the timer caused an abort, return an appropriate error message
 	if evm.Cancelled() {
-		log.Info("EVM was canceled due to timeout when replaying transaction ", tx.Hash().String())
+		log.Info("EVM was canceled due to timeout when replaying transaction ", "txHash", tx.Hash().String())
 		return nil, nil, nil, fmt.Errorf("Transaction replay execution aborted (timeout = %v)", timeout)
 	}
 	return &traceStructLog, &msg, result, nil
@@ -474,7 +474,7 @@ func traceTx(ctx context.Context, state *state.StateDB, header *evmcore.EvmHeade
 
 	structLog, msg, result, err := getStructLogForTransaction(ctx, tx, backend, state, header, block, index)
 	if err != nil {
-		log.Debug("Cannot get struct log for transaction %s, %s", tx.Hash().String(), err.Error())
+		log.Debug("Cannot get struct log for transaction ", "txHash", tx.Hash().String(), "err", err.Error())
 		return nil, err
 	}
 
@@ -514,9 +514,9 @@ func traceTx(ctx context.Context, state *state.StateDB, header *evmcore.EvmHeade
 		reason, errUnpack := abi.UnpackRevert(result.Revert())
 		if errUnpack == nil {
 			blockTrace.Error = reason
-			log.Debug("Transaction replay was reverted: ", blockTrace.Error)
+			log.Debug("Transaction replay was reverted", "err", blockTrace.Error)
 		} else {
-			log.Debug("Cannot decode revert reason for tx: ", tx.Hash().String(), "err:", errUnpack.Error())
+			log.Debug("Cannot decode revert reason for tx: ", "txHash", tx.Hash().String(), "err", errUnpack.Error())
 		}
 	}
 	// add root object to all traces and process it
@@ -548,7 +548,7 @@ func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, t
 	// get state and header from block parent, to be able to recreate correct nonces
 	state, header, err := backend.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &parentBlockNr})
 	if err != nil {
-		log.Debug("Cannot get state for blockblock %s: %s", block.NumberU64(), err.Error())
+		log.Debug("Cannot get state for blockblock ", "block", block.NumberU64(), "err", err.Error())
 		mainErr = err
 	}
 
@@ -558,13 +558,13 @@ func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, t
 			// get full transaction info
 			tx, _, index, err := backend.GetTransaction(ctx, tx.Hash())
 			if err != nil {
-				log.Debug("Cannot get transaction %s: %s", tx.Hash().String(), err.Error())
+				log.Debug("Cannot get transaction", "txHash", tx.Hash().String(), "err", err.Error())
 				mainErr = err
 				break
 			}
 			txTraces, err := traceTx(ctx, state, header, backend, block, tx, index)
 			if err != nil {
-				log.Debug("Cannot get transaction trace for transaction %s: %s", tx.Hash().String(), err.Error())
+				log.Debug("Cannot get transaction trace for transaction", "txHash", tx.Hash().String(), "err", err.Error())
 				mainErr = err
 				break
 			}
@@ -599,12 +599,12 @@ func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, t
 * only the transaction hash is returned.
  */
 func (s *PublicTxTraceAPI) Block(ctx context.Context, numberOrHash rpc.BlockNumberOrHash) (*[]ActionTrace, error) {
-	defer func(start time.Time) { log.Info("Executing trace_block call finished", "runtime", time.Since(start)) }(time.Now())
+	defer func(start time.Time) { log.Debug("Executing trace_block call finished", "runtime", time.Since(start)) }(time.Now())
 
 	blockNr, _ := numberOrHash.Number()
 	block, err := s.b.BlockByNumber(ctx, blockNr)
 	if err != nil {
-		log.Debug("Cannot get block nr. %s", blockNr)
+		log.Debug("Cannot get block from db", "blockNr", blockNr)
 		return nil, err
 	}
 
@@ -621,7 +621,7 @@ func (s *PublicTxTraceAPI) Transaction(ctx context.Context, hash common.Hash) (*
 	blkNr := rpc.BlockNumber(blockNumber)
 	block, err := s.b.BlockByNumber(ctx, blkNr)
 	if err != nil {
-		log.Debug("Cannot get block nr. %s", blkNr)
+		log.Debug("Cannot get block from db", "blockNr", blkNr)
 		return nil, err
 	}
 
@@ -641,7 +641,25 @@ type FilterArgs struct {
 
 // Filter is function for trace_filter rpc call
 func (s *PublicTxTraceAPI) Filter(ctx context.Context, args FilterArgs) (*[]ActionTrace, error) {
-	defer func(start time.Time) { log.Info("Executing trace_filter call finished", "runtime", time.Since(start)) }(time.Now())
+	defer func(start time.Time) {
+		log.Debug("Executing trace_filter call finished", "runtime", time.Since(start))
+		if args.FromBlock != nil {
+			log.Info("fromBlk:", "blk", args.FromBlock.BlockNumber.Int64(), " hex:", hexutil.Uint64(args.FromBlock.BlockNumber.Int64()))
+		}
+		if args.ToBlock != nil {
+			log.Info("toBlk:", "blk", args.ToBlock.BlockNumber.Int64(), " hex:", hexutil.Uint64(args.ToBlock.BlockNumber.Int64()))
+		}
+		if args.FromAddress != nil {
+			for _, addr := range *args.FromAddress {
+				log.Info("fromAddr:", "from addr", addr.String())
+			}
+		}
+		if args.ToAddress != nil {
+			for _, addr := range *args.ToAddress {
+				log.Info("toAddr:", "to addr", addr.String())
+			}
+		}
+	}(time.Now())
 
 	// TODO put timeout to server configuration
 	var cancel context.CancelFunc
@@ -749,26 +767,16 @@ blocks:
 		}
 	}
 
-	//when timeout occured or nothing in result
+	//when timeout occured, nothing in result or error
 	if contextDone || len(callTrace.Actions) == 0 || mainErr != nil {
 		// in case of empty block, create an empty action result
-
 		emptyTrace := CallTrace{
 			Actions: make([]ActionTrace, 0),
 		}
-		blockTrace := NewActionTrace(common.Hash{}, *new(big.Int), common.Hash{}, 0, "empty")
-		txAction := NewAddressAction(&common.Address{}, 0, []byte{}, nil, hexutil.Big{}, nil)
-		blockTrace.Action = *txAction
-		if contextDone {
-			blockTrace.Error = "Timeout for trace_filter occured, please try to set smaller block interval"
-		} else if mainErr != nil {
-			blockTrace.Error = mainErr.Error()
-		} else {
-			blockTrace.Error = "Empty block"
+		if mainErr != nil {
+			return &emptyTrace.Actions, mainErr
 		}
-		emptyTrace.addTrace(blockTrace)
 		return &emptyTrace.Actions, nil
-
 	}
 	return &callTrace.Actions, nil
 }
