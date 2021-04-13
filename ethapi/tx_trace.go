@@ -601,7 +601,7 @@ func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, t
 * only the transaction hash is returned.
  */
 func (s *PublicTxTraceAPI) Block(ctx context.Context, numberOrHash rpc.BlockNumberOrHash) (*[]ActionTrace, error) {
-	defer func(start time.Time) { log.Debug("Executing trace_block call finished", "runtime", time.Since(start)) }(time.Now())
+	defer func(start time.Time) { log.Info("Executing trace_block call finished", "runtime", time.Since(start)) }(time.Now())
 
 	blockNr, _ := numberOrHash.Number()
 	block, err := s.b.BlockByNumber(ctx, blockNr)
@@ -644,7 +644,7 @@ type FilterArgs struct {
 // Filter is function for trace_filter rpc call
 func (s *PublicTxTraceAPI) Filter(ctx context.Context, args FilterArgs) (*[]ActionTrace, error) {
 	defer func(start time.Time) {
-		log.Debug("Executing trace_filter call finished", "runtime", time.Since(start))
+		log.Info("Executing trace_filter call finished", "runtime", time.Since(start))
 		if args.FromBlock != nil {
 			log.Info("fromBlk:", "blk", args.FromBlock.BlockNumber.Int64(), " hex:", hexutil.Uint64(args.FromBlock.BlockNumber.Int64()))
 		}
