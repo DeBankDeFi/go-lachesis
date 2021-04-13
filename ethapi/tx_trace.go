@@ -411,7 +411,7 @@ func getStructLogForTransaction(
 	// Setup context so it may be cancelled the call has completed
 	// or, in case of unmetered gas, setup a context with a timeout.
 	// TODO add time into the server configuration
-	var timeout time.Duration = 4 * time.Second
+	var timeout time.Duration = 2 * time.Second
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithTimeout(ctx, timeout)
 
@@ -665,7 +665,7 @@ func (s *PublicTxTraceAPI) Filter(ctx context.Context, args FilterArgs) (*[]Acti
 
 	// TODO put timeout to server configuration
 	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	// process arguments
