@@ -283,7 +283,9 @@ func processStructLog(ctx context.Context, backend Backend, structLogger *TraceS
 			fromTrace.childTraces = append(fromTrace.childTraces, trace)
 			trace.Result.RetOffset = retOffset
 			trace.Result.RetSize = retSize
-			trace.Result.GasUsed = hexutil.Uint64((structLogger.StructLogs()[i+1]).Gas)
+			if len(structLogger.StructLogs()) > i+1 {
+				trace.Result.GasUsed = hexutil.Uint64((structLogger.StructLogs()[i+1]).Gas)
+			}
 
 			callTrace.Stack = append(callTrace.Stack, trace)
 			state = append(state, depthState{logg.Depth, false})
