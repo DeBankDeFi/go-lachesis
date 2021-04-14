@@ -665,7 +665,7 @@ func (s *PublicTxTraceAPI) Filter(ctx context.Context, args FilterArgs) (*[]Acti
 
 	// TODO put timeout to server configuration
 	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
 	// process arguments
@@ -769,16 +769,13 @@ blocks:
 		}
 	}
 
-	//when timeout occured, nothing in result or error
-	if contextDone || len(callTrace.Actions) == 0 || mainErr != nil {
-		// in case of empty block, create an empty action result
-		emptyTrace := CallTrace{
-			Actions: make([]ActionTrace, 0),
-		}
+	//when timeout occured or another error
+	if contextDone || mainErr != nil {
 		if mainErr != nil {
-			return &emptyTrace.Actions, mainErr
+			return nil, mainErr
 		}
-		return &emptyTrace.Actions, nil
+		return nil, fmt.Errorf("Timeout when scanning blocks")
 	}
+
 	return &callTrace.Actions, nil
 }
