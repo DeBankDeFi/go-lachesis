@@ -286,8 +286,12 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 		number = rpc.BlockNumber(header.Number.Uint64())
 	}
 
-	receipts := b.svc.app.GetReceipts(idx.Block(number))
-	return receipts, nil
+	blk, err := b.BlockByNumber(ctx, number)
+	if err != nil {
+		return nil, err
+	}
+
+	return b.svc.app.GetReceiptsV2(blk.Hash, blk.Number.Uint64(), blk.Transactions, b.ChainConfig()), nil
 }
 
 // GetReceipts retrieves the receipts for all transactions in a given block.
