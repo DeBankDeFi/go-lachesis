@@ -36,15 +36,34 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+// TxTraceConfig is a config for transaction tracing
+type TxTraceConfig struct {
+	// Timeout for trace_filter, in seconds.
+	FilterTimeLimit int
+	// Timeout for trace_blocks and trace_transaction, in seconds.
+	TraceTimeLimit int
+}
+
 // PublicTxTraceAPI provides an API to access transaction tracing.
 // It offers only methods that operate on public data that is freely available to anyone.
 type PublicTxTraceAPI struct {
-	b Backend
+	b    Backend
+	conf *TxTraceConfig
 }
 
 // NewPublicTxTraceAPI creates a new transaction trace API.
 func NewPublicTxTraceAPI(b Backend) *PublicTxTraceAPI {
-	return &PublicTxTraceAPI{b}
+	conf := b.TxTraceConfig()
+	if conf == nil {
+		conf = &TxTraceConfig{
+			FilterTimeLimit: 20,
+			TraceTimeLimit:  30,
+		}
+	}
+	return &PublicTxTraceAPI{
+		b:    b,
+		conf: conf,
+	}
 }
 
 // CallTrace is struct for holding tracing results
@@ -391,7 +410,8 @@ func getStructLogForTransaction(
 	state *state.StateDB,
 	header *evmcore.EvmHeader,
 	block *evmcore.EvmBlock,
-	index uint64) (*TraceStructLogger, *types.Message, *evmcore.ExecutionResult, error) {
+	index uint64,
+	timeout time.Duration) (*TraceStructLogger, *types.Message, *evmcore.ExecutionResult, error) {
 
 	// Config set for debug and to collect all information from EVM
 	cfg := vm.Config{}
@@ -410,8 +430,6 @@ func getStructLogForTransaction(
 
 	// Setup context so it may be cancelled the call has completed
 	// or, in case of unmetered gas, setup a context with a timeout.
-	// TODO add time into the server configuration
-	var timeout time.Duration = 30 * time.Second
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithTimeout(ctx, timeout)
 
@@ -468,13 +486,13 @@ func getStructLogForTransaction(
 }
 
 // Trace transaction and return processed result
-func traceTx(ctx context.Context, state *state.StateDB, header *evmcore.EvmHeader, backend Backend, block *evmcore.EvmBlock, tx *types.Transaction, index uint64) (*[]ActionTrace, error) {
+func traceTx(ctx context.Context, state *state.StateDB, header *evmcore.EvmHeader, backend Backend, block *evmcore.EvmBlock, tx *types.Transaction, index uint64, timeout time.Duration) (*[]ActionTrace, error) {
 
 	txTrace := CallTrace{
 		Actions: make([]ActionTrace, 0),
 	}
 
-	structLog, msg, result, err := getStructLogForTransaction(ctx, tx, backend, state, header, block, index)
+	structLog, msg, result, err := getStructLogForTransaction(ctx, tx, backend, state, header, block, index, timeout)
 	if err != nil {
 		log.Debug("Cannot get struct log for transaction ", "txHash", tx.Hash().String(), "err", err.Error())
 		return nil, err
@@ -529,7 +547,7 @@ func traceTx(ctx context.Context, state *state.StateDB, header *evmcore.EvmHeade
 }
 
 // Gets all transaction from specified block and process them
-func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, txHash *common.Hash) (*[]ActionTrace, error) {
+func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, txHash *common.Hash, timeout time.Duration) (*[]ActionTrace, error) {
 	var (
 		mainErr       error
 		blockNumber   int64
@@ -564,7 +582,7 @@ func traceBlock(ctx context.Context, block *evmcore.EvmBlock, backend Backend, t
 				mainErr = err
 				break
 			}
-			txTraces, err := traceTx(ctx, state, header, backend, block, tx, index)
+			txTraces, err := traceTx(ctx, state, header, backend, block, tx, index, timeout)
 			if err != nil {
 				log.Debug("Cannot get transaction trace for transaction", "txHash", tx.Hash().String(), "err", err.Error())
 				mainErr = err
@@ -610,8 +628,7 @@ func (s *PublicTxTraceAPI) Block(ctx context.Context, numberOrHash rpc.BlockNumb
 		return nil, err
 	}
 
-	return traceBlock(ctx, block, s.b, nil)
-
+	return traceBlock(ctx, block, s.b, nil, time.Duration(s.conf.TraceTimeLimit)*time.Second)
 }
 
 // Transaction trace_transaction function returns transaction traces
@@ -627,7 +644,7 @@ func (s *PublicTxTraceAPI) Transaction(ctx context.Context, hash common.Hash) (*
 		return nil, err
 	}
 
-	return traceBlock(ctx, block, s.b, &hash)
+	return traceBlock(ctx, block, s.b, &hash, time.Duration(s.conf.TraceTimeLimit)*time.Second)
 
 }
 
@@ -663,9 +680,8 @@ func (s *PublicTxTraceAPI) Filter(ctx context.Context, args FilterArgs) (*[]Acti
 		}
 	}(time.Now())
 
-	// TODO put timeout to server configuration
 	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, time.Duration(s.conf.FilterTimeLimit)*time.Second)
 	defer cancel()
 
 	// process arguments
@@ -724,7 +740,7 @@ blocks:
 
 		// when block has any transaction, then process it
 		if block != nil && block.Transactions.Len() > 0 {
-			traces, err := traceBlock(ctx, block, s.b, nil)
+			traces, err := traceBlock(ctx, block, s.b, nil, time.Duration(s.conf.TraceTimeLimit)*time.Second)
 			if err != nil {
 				mainErr = err
 				break

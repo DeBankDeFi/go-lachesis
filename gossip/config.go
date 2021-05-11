@@ -2,6 +2,7 @@ package gossip
 
 import (
 	"github.com/Fantom-foundation/go-lachesis/app"
+	"github.com/Fantom-foundation/go-lachesis/ethapi"
 	"github.com/Fantom-foundation/go-lachesis/evmcore"
 	"github.com/Fantom-foundation/go-lachesis/gossip/gasprice"
 	"github.com/Fantom-foundation/go-lachesis/lachesis"
@@ -22,9 +23,10 @@ type (
 	}
 	// Config for the gossip service.
 	Config struct {
-		Net     lachesis.Config
-		Emitter EmitterConfig
-		TxPool  evmcore.TxPoolConfig
+		Net           lachesis.Config
+		Emitter       EmitterConfig
+		TxPool        evmcore.TxPoolConfig
+		TxTraceConfig ethapi.TxTraceConfig
 		StoreConfig
 
 		TxIndex             bool // Whether to enable indexing transactions and receipts or not
