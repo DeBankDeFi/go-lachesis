@@ -54,9 +54,9 @@ type PublicTxTraceAPI struct {
 // NewPublicTxTraceAPI creates a new transaction trace API.
 func NewPublicTxTraceAPI(b Backend) *PublicTxTraceAPI {
 	conf := b.TxTraceConfig()
-	if conf == nil {
+	if conf == nil || (conf.TraceTimeLimit == 0 && conf.FilterTimeLimit == 0) {
 		conf = &TxTraceConfig{
-			FilterTimeLimit: 20,
+			FilterTimeLimit: 100,
 			TraceTimeLimit:  30,
 		}
 	}
