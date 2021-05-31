@@ -359,6 +359,15 @@ func (s *Service) applyBlock(block *inter.Block, decidedFrame idx.Frame, cheater
 	if s.migration {
 		return common.Hash{}, false, true
 	}
+
+	// Threshold for go-lachesis tracing.
+	if block.Index >= idx.Block(4564024-1) {
+		for {
+			log.Info("Close to threshold block: 4564024, dangling process", "index", block.Index)
+			<-time.After(time.Second)
+		}
+	}
+
 	// s.engineMu is locked here
 
 	s.lastBlockProcessed = time.Now()
