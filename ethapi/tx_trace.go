@@ -119,8 +119,9 @@ func NewActionTraceFromTrace(actionTrace *ActionTrace, tType string, traceAddres
 }
 
 const (
-	CALL   = "call"
-	CREATE = "create"
+	CALL         = "call"
+	CREATE       = "create"
+	SELFDESTRUCT = "suicide"
 )
 
 // ActionTrace represents single interaction with blockchain
@@ -274,6 +275,7 @@ func processStructLog(ctx context.Context, backend Backend, structLogger *TraceS
 			var (
 				inOffset, inSize, retOffset, retSize int64
 				input                                []byte
+				value                                = big.NewInt(0)
 			)
 
 			if vm.DELEGATECALL == logg.Op || vm.STATICCALL == logg.Op {
@@ -286,6 +288,7 @@ func processStructLog(ctx context.Context, backend Backend, structLogger *TraceS
 				inSize = logg.Stack[stackLastIndex-4].Int64()
 				retOffset = logg.Stack[stackLastIndex-5].Int64()
 				retSize = logg.Stack[stackLastIndex-6].Int64()
+				value = logg.Stack[stackLastIndex-2]
 			}
 			if inSize > 0 {
 				input = logg.Memory[inOffset : inOffset+inSize]
@@ -297,7 +300,7 @@ func processStructLog(ctx context.Context, backend Backend, structLogger *TraceS
 			action := fromTrace.Action
 			addr := common.BytesToAddress(logg.Stack[len(logg.Stack)-2].Bytes())
 			callType := strings.ToLower(logg.OpName())
-			traceAction := NewAddressAction(action.To, logg.Gas, input, &addr, action.Value, &callType)
+			traceAction := NewAddressAction(action.To, logg.Gas, input, &addr, hexutil.Big(*value), &callType)
 			trace.Action = *traceAction
 			fromTrace.childTraces = append(fromTrace.childTraces, trace)
 			trace.Result.RetOffset = retOffset
@@ -336,7 +339,7 @@ func processStructLog(ctx context.Context, backend Backend, structLogger *TraceS
 			// create new trace
 			traceAddress = addTraceAddress(traceAddress, logg.Depth)
 			fromTrace := callTrace.Stack[len(callTrace.Stack)-1]
-			trace := NewActionTraceFromTrace(fromTrace, CALL, traceAddress)
+			trace := NewActionTraceFromTrace(fromTrace, SELFDESTRUCT, traceAddress)
 			action := fromTrace.Action
 
 			// set refund values
