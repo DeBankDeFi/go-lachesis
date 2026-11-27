@@ -64,7 +64,7 @@ require (
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/olebedev/go-duktape.v3 v3.0.0-20200619000410-60c24ae608a6 // indirect
 	gopkg.in/urfave/cli.v1 v1.22.1
-	gopkg.in/yaml.v2 v2.2.5 // indirect
+	gopkg.in/yaml.v2 v2.2.8 // indirect
 )
 
 replace gopkg.in/urfave/cli.v1 => github.com/urfave/cli v1.20.0
